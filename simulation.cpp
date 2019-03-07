@@ -4,36 +4,12 @@
 using namespace cv;
 using namespace std;
 
-const float toLMS[3][3] = {
-	{17.8824, 43.5161, 4.1194}, 
-	{ 3.4557, 27.1554, 3.8671},
-	{ 0.0300,  0.1843, 1.4671}
-};
-
-const float toProtan[3][3] = {
-	{0, 2.0234, -2.5258}, 
-	{0,      1,       0},
-	{0,      0,       1}
-};
-
-const float toDeutan[3][3] = {
-	{      1,       0,      0}, 
-	{ 0.4942,       0, 1.2483},
-	{      0,       0,      1}
-};
-
-const float toRGB[3][3] = {
-	{  0.0809, -0.1305,  0.1167}, 
-	{ -0.0102,  0.0540, -0.1136},
-	{ -0.0004, -0.0041,  0.6935}
-};
-
-//======================================================================================
-// Simulation 1 : Jinmi Lee, Wellington Pinheiro dos Santos
-// An Adaptive Fuzzy-Based System to Simulate, Quantify, and Compensate Color Blindness
-// Based on Dalton.
-// RGB --> LMS --> RGB
-//======================================================================================
+/**======================================================================================
+ Simulation 1   : Jinmi Lee, Wellington Pinheiro dos Santos
+ Paper          : An Adaptive Fuzzy-Based System to Simulate, Quantify, and Compensate Color Blindness
+ Based on Dalton.
+ RGB --> LMS --> RGB
+//======================================================================================**/
 
 void dalton_protanopia(const Mat &testcolor, Mat &protan, int rows, int cols)
 {
@@ -97,11 +73,11 @@ void dalton_deuteranopia(const Mat &testcolor, Mat &deutan, int rows, int cols)
 	}
 }
 
-//======================================================================================
-// Simulation 2 : Brettel, Viénot, Mollon
-// Digital Video Colourmaps for Checking the Legibility of Displays by Dichromats
-// RGB --> LMS --> XYZ --> RGB
-//======================================================================================
+/**======================================================================================
+ Simulation 2   : Brettel, Viénot, Mollon
+ Paper          : Digital Video Colourmaps for Checking the Legibility of Displays by Dichromats
+ RGB --> LMS --> XYZ --> RGB
+======================================================================================**/
 
 void bvm_protanopia(const Mat &testcolor, Mat &protan, int rows, int cols)
 {
@@ -116,8 +92,8 @@ void bvm_protanopia(const Mat &testcolor, Mat &protan, int rows, int cols)
 			float Y =	(21.3389  * R) + (70.6743  * G) + ( 7.98680 * B);
 			float Z =	( 1.86297 * R) + (11.4620  * G) + (91.2367  * B);
 
-			float L = ( 0.15514 * X) + (0.54312 * Y) + (-0.03286 * Z);
-			float M = (-0.15514 * X) + (0.45684 * Y) + ( 0.03286 * Z);
+			float L = ( 0.15514 * X) +  (0.54312 * Y) + (-0.03286 * Z);
+			float M = (-0.15514 * X) +  (0.45684 * Y) + ( 0.03286 * Z);
 			float S = (       0 * X) + (      0 * Y) + ( 0.01608 * Z);
 
 			//protan transformation
@@ -175,6 +151,51 @@ void bvm_deuteranopia(const Mat &testcolor, Mat &deutan, int rows, int cols)
 	}
 }
 
+
+/**======================================================================================
+ Conversion sRGB --> XYZ
+ Transformation based on :  (1) docs.opencv.org/3.1.0/de/d25/imgproc_color_conversions.html
+                            (2) www.brucelindbloom.com/index.html?Eqn_xyY_to_XYZ.html
+ 
+ ======================================================================================**/
+
+void RGBtoXYZ(const Mat &testcolor, Mat &toXYZ, int rows, int cols)
+{
+    for (int i = 0; i < testcolor.rows; i++) {
+        for (int j = 0; j < testcolor.cols; j++) {
+            
+            float R = pow(testcolor.at<Vec3b>(i, j)[2], 2.2);
+            float G = pow(testcolor.at<Vec3b>(i, j)[1], 2.2);
+            float B = pow(testcolor.at<Vec3b>(i, j)[0], 2.2);
+            
+            //RGB --> XYZ
+            float X =    (0.412453 * R) + (0.357580 * G) + (0.180423 * B);
+            float Y =    (0.212671 * R) + (0.715160 * G) + (0.072169 * B);
+            float Z =    (0.019334 * R) +  (0.119193 * G) + (0.950227 * B);
+            
+            // normalization XYZ --> xyY
+             float x = X/(X+Y+Z);
+             float y = Y/(X+Y+Z);
+             float z = Z/(X+Y+Z);
+            
+            
+            //xyY --> XYZ
+             float X2 = (x * Y)/y;
+             float Y2 =  Y;
+             float Z2 = (1-x-y)*Y/y;
+    
+            //XYZ --> RGB
+            float R1 = (  3.240479 * X2) + ( -1.53715  * Y2) + ( -0.498535 * Z2);
+            float G1 = ( -0.969256 * X2) + (  1.875991 * Y2) + (  0.041556 * Z2);
+            float B1 = (  0.055648 * X2) + ( -0.204043 * Y2) + (  1.057311 * Z2);
+            
+            toXYZ.at<Vec3b>(i, j)[2] = pow(R1, (1.0 / 2.2));
+            toXYZ.at<Vec3b>(i, j)[1] = pow(G1, (1.0 / 2.2));
+            toXYZ.at<Vec3b>(i, j)[0] = pow(B1, (1.0 / 2.2));
+        }
+    }
+}
+
 int main(int argv, char** argc){
 	Mat testcolor = imread("parrot.png", IMREAD_COLOR);
     //FOR WINDOWS --> CV_LOAD_IMAGE_COLOR);
@@ -185,13 +206,20 @@ int main(int argv, char** argc){
 	//CVD Simulation
 	Mat protanimg(rows, cols, CV_8UC3);
 	Mat deutanimg(rows, cols, CV_8UC3);
+    Mat toXYZ(rows, cols, CV_8UC3);
 
+    //Dalton Simulation
 	dalton_protanopia(testcolor, protanimg, rows, cols);
     dalton_deuteranopia(testcolor, deutanimg, rows, cols);
-	
 	imwrite("dalton_protan.jpg", protanimg);
     imwrite("dalton_deutan.jpg", deutanimg);
 
+    //BVM Simulation
+    bvm_protanopia(testcolor, protanimg, rows, cols);
+    bvm_deuteranopia(testcolor, deutanimg, rows, cols);
+    imwrite("bvm_protan.jpg", protanimg);
+    imwrite("bvm_deutan.jpg", deutanimg);
+    
 
 	//cvtColor(testcolor, testcolor, COLOR_BGR2HSV);
 	/**vector<Mat> channels;
